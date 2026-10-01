@@ -176,26 +176,31 @@ def main():
     elif args['data']:
         body = '&'.join(d for d in args['data'])
 
-    method = (args['method'] or ('HEAD' if args['head'] else ('POST' if (body or args['forms']) else 'GET'))).upper()
+    method = (args['method'] or ('HEAD' if args['head'] else ('POST' if (body or args['forms'] or args['json_mode']) else 'GET'))).upper()
+    if args['head']:
+        args['include'] = True  # curl: -I implies -i
 
-    # multipart
+    # multipart: files={field: path}, plain fields via data dict
     files = None
+    form_fields = {}
     if args['forms']:
-        multipart = []
+        files = {}
         for f in args['forms']:
             k, _, v = f.partition('=')
             if v.startswith('@'):
-                p = v[1:]
-                multipart.append((k, (os.path.basename(p), open(p, 'rb').read())))
+                files[k] = v[1:]
             else:
-                multipart.append((k, (None, v)))
-        files = multipart
+                form_fields[k] = v
+        if not files:
+            files = None
 
     try:
         client = primp.Client(**kw)
         req_kw = dict(headers=hdrs or None)
         if files is not None:
             req_kw['files'] = files
+            if form_fields:
+                req_kw['data'] = form_fields
         elif args['json_mode'] and body:
             try:
                 req_kw['json'] = _json.loads(body)
@@ -211,8 +216,10 @@ def main():
         resp = client.request(method, url, **req_kw)
     except Exception as e:
         msg = str(e)
-        if 'timeout' in msg.lower(): die(msg, 28)
-        if 'resolve' in msg.lower() or 'dns' in msg.lower() or 'name or service' in msg.lower(): die(msg, 6)
+        low = msg.lower()
+        if 'timeout' in low or 'timed out' in low: die(msg, 28)
+        if 'invalid impersonate' in low: die(msg, 2)
+        if 'resolve' in low or 'dns' in low or 'name or service' in low: die(msg, 6)
         die(msg, 7)
 
     status = resp.status_code
