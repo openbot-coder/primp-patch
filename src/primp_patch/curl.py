@@ -146,6 +146,11 @@ def main():
                 req_kw['data'] = body
         elif body:
             req_kw['data'] = body
+            # curl semantics: -d implies form-urlencoded content type
+            if not any(k.lower() == 'content-type' for k in (hdrs or {})):
+                hdrs = dict(hdrs or {})
+                hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
+                req_kw['headers'] = hdrs
         resp = client.request(method, url, **req_kw)
     except Exception as e:
         msg = str(e)
