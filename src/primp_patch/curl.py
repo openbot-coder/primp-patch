@@ -1,32 +1,89 @@
 #!/usr/bin/env python3
-"""pcurl — curl-like client backed by primp (rnet core, browser TLS/JA3 fingerprint).
+"""pcurl — curl 风格命令行，primp 内核（浏览器 TLS/JA3 指纹）
 
-Drop-in replacement for the common curl use cases. Anything not recognized
-falls back to real curl (with --no-fingerprint passthrough disabled).
+用法:
+  pcurl [选项] <URL>
 
-Usage:
-  pcurl [options] <url>
-Options (curl-compatible subset):
-  -X, --method <M>        HTTP method (default GET; POST auto with -d)
-  -d, --data <data>       request body (repeatable, joined with &)
-      --data-raw <data>   same as -d (@file NOT supported)
-  -H, --header <h>        extra header "Name: value" (repeatable)
-  -F, --form <f>          multipart field "k=v" or "k=@file"
-  -o, --output <file>     write body to file (- = stdout)
-  -L, --location          follow redirects
-  -k, --insecure          accept invalid certs
-  -s, --silent            suppress status line
-  -i, --include           include response headers in output
-  -I, --head              HEAD request
-  -j, --json              shorthand: -H content-type:application/json -d @-
-      --impersonate <p>   primp profile (chrome_146 default; primp 2.x also: chrome_145, firefox, safari, edge)
-      --proxy <url>       proxy for this request (default: $PRIMP_PATCH_PROXY/$HTTPS_PROXY)
-      --max-time <sec>    total timeout
-      --compressed        accepted for curl compat (primp always handles)
-      --no-fingerprint    plain HTTP (no TLS impersonation)
-  -v, --verbose           print request summary to stderr
-  -h, --help              this help
-Exit codes follow curl: 0 ok, 6 host resolve, 7 connect, 22 --fail, 28 timeout.
+描述:
+  pcurl 是 curl 的常用子集平替，底层用 primp（rnet 内核）发送请求，
+  默认模拟 Chrome 的 TLS/JA3 指纹与 User-Agent，用于访问有反爬
+  （TLS 指纹检测）的站点。常规管道用法与 curl 一致：
+  响应体写 stdout，状态信息写 stderr，因此 `pcurl url | jq` 无需 -s。
+
+常用示例:
+  pcurl https://api.github.com/zen                     # GET（Chrome 指纹）
+  pcurl -s https://httpbin.org/get                     # -s 静默（不打印状态行）
+  pcurl -si https://example.com                        # -i 输出含响应头
+  pcurl -o page.html https://example.com               # 响应体落盘
+  pcurl -L https://example.com/redirect                # 跟随重定向（最多 10 跳）
+  pcurl -X POST https://httpbin.org/post -d 'a=1&b=2'  # 表单（自动带 urlencoded CT）
+  pcurl -d 'a=1' -d 'b=2' URL                          # 多个 -d 用 & 拼接
+  pcurl -H 'Authorization: Bearer xxx' URL             # 自定义请求头（可重复）
+  echo '{"k":"v"}' | pcurl -j https://httpbin.org/post # JSON 快捷（读 stdin）
+  pcurl -j -d '{"k":"v"}' URL                          # JSON 快捷（直接给数据）
+  pcurl -F 'file=@photo.jpg' -F 'caption=hi' URL       # multipart 上传
+  pcurl -I https://example.com                         # HEAD 请求
+  pcurl -k https://self-signed.badssl.com/             # 忽略证书错误
+  pcurl --max-time 10 --proxy http://127.0.0.1:7890 URL
+  pcurl --impersonate firefox URL                      # 换指纹档位
+  pcurl --no-fingerprint URL                           # 关闭 TLS 伪装（普通客户端）
+  pcurl -f https://httpbin.org/status/404              # 4xx/5xx 时 exit 22，不输出 body
+
+选项 (curl 兼容子集):
+  请求:
+  -X, --method <M>       HTTP 方法（默认 GET；有 -d/-F 时自动 POST）
+  -d, --data <data>      请求体；可重复，多个值用 & 拼接；自动附加
+                         Content-Type: application/x-www-form-urlencoded
+                         （除非显式用 -H 指定过 Content-Type）
+      --data-raw <data>  同 -d（不支持 @file 语法）
+  -H, --header <h>       请求头 "Name: value"（可重复）
+  -F, --form <f>         multipart 字段 "k=v" 或 "k=@file"（可重复）
+  -j, --json             JSON 快捷：自动加 Content-Type: application/json，
+                         数据来自 -d 或 stdin；合法 JSON 时结构化发送
+  -I, --head             发 HEAD 请求
+  -e  (无)               不支持，请用 -H 'Referer: ...'
+
+  响应控制:
+  -o, --output <file>    响应体写入文件（- 表示 stdout，默认）
+  -i, --include          输出中包含响应头（HTTP/1.1 200 风格）
+  -s, --silent           不向 stderr 打印状态行
+  -f, --fail             状态码 >= 400 时不输出 body 且 exit 22
+  -L, --location         跟随 3xx 重定向（最多 10 跳）
+      --compressed       兼容 curl 而已——primp 始终自动处理压缩
+
+  连接与安全:
+  -k, --insecure         跳过 TLS 证书校验
+      --proxy <url>      本请求使用的代理；默认取环境变量
+                         $PRIMP_PATCH_PROXY，其次 $HTTPS_PROXY
+  -m, --max-time <sec>   总超时秒数（默认 30）
+      --impersonate <p>  TLS 指纹档位。primp 2.x 可用:
+                         chrome_146（默认）/ chrome_145 / firefox /
+                         safari / edge；也可用环境变量 $PCURL_IMPERSONATE
+      --no-fingerprint   不做 TLS 伪装（使用客户端原生指纹）
+
+  其他:
+  -v, --verbose          在 stderr 打印请求摘要
+  -h, --help             本帮助
+
+环境变量:
+  PRIMP_PATCH_PROXY   默认代理（如 http://127.0.0.1:7890）
+  HTTPS_PROXY         次选默认代理
+  PCURL_IMPERSONATE   默认指纹档位（--impersonate 可覆盖）
+
+退出码（对齐 curl）:
+  0    成功（含 4xx/5xx，除非 --fail）
+  2    用法错误（未知选项、缺 URL 等）
+  6    域名解析失败
+  7    连接失败
+  22   --fail 时收到 4xx/5xx
+  28   超时
+
+与 curl 的差异:
+  * 只支持单个 URL
+  * 不支持 -w/--write-out、--resolve、-u（Basic 认证请用 -H
+    'Authorization: Basic ...'）、cookie 文件（-b/-c）、@file 请求体
+  * 遇到不认识的选项会明确报错（退出码 2），不会静默转发给真 curl
+  * -d 自动附加 form-urlencoded 头（与 curl 一致），但 JSON 场景请用 -j
 """
 import sys, os, json as _json
 
@@ -185,12 +242,7 @@ def main():
     outf.write(content)
     if args['output'] not in (None, '-'):
         outf.close()
-    # like curl -o: also support -w style? keep simple
     sys.exit(0 if status < 400 else (22 if args['fail'] else 0))
-
-if __name__ == '__main__':
-    main()
-
 
 def cli():
     main()
