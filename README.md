@@ -72,3 +72,26 @@ python -c "import primp_patch, requests; print(requests.get('https://example.com
 ## License
 
 MIT
+
+## pcurl — curl 平替（内置 CLI）
+
+v0.2.0 起内置 `pcurl`：primp 内核的 curl 风格命令行，默认 Chrome TLS/JA3 指纹。
+
+```bash
+pip install primp-patch          # 安装后自带 pcurl 命令
+python -m primp_patch.curl ...   # 或不经 PATH 直接调用
+
+pcurl https://api.github.com/zen                 # GET，Chrome 指纹
+pcurl -s https://httpbin.org/get                 # -s 静默（状态行不打 stderr）
+pcurl -si https://example.com                    # -i 含响应头
+pcurl -X POST https://httpbin.org/post -d 'a=1&b=2'
+pcurl -j https://httpbin.org/post <<< '{"k":"v"}'  # JSON 快捷（stdin）
+pcurl -o page.html https://example.com           # 落盘
+pcurl -L -k --max-time 10 --proxy http://127.0.0.1:7890 https://target
+pcurl --impersonate firefox https://example.com  # 换指纹档位
+pcurl --no-fingerprint https://example.com       # 不做 TLS 伪装
+```
+
+- 代理默认取 `$PRIMP_PATCH_PROXY` / `$HTTPS_PROXY`
+- 档位（primp 2.x）：`chrome_146`（默认）、`chrome_145`、`firefox`、`safari`、`edge`
+- 退出码对齐 curl：6 解析失败 / 7 连接失败 / 22 `--fail` 时 4xx/5xx / 28 超时
