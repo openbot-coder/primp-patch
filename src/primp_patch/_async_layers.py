@@ -18,7 +18,15 @@ from typing import Any
 from .transport import _env_proxy
 
 _originals: dict = {}
+# NOTE: kept in sync with _patch._STATE via set_shared_state(); _patch.py owns
+# the single source of truth so patch()/is_patched()/unpatch() agree.
 _STATE = {"httpx": False, "aiohttp": False}
+
+
+def set_shared_state(state: dict) -> None:
+    """Rebind this module's _STATE to the shared dict owned by _patch."""
+    global _STATE
+    _STATE = state
 
 
 # ------------------------------------------------------------------- helpers

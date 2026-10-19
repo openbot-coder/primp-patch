@@ -150,14 +150,15 @@ class Session:
         return h or None
 
     def request(self, method: str, url: str, params=None, data=None, json=None,
-                headers=None, timeout=None, **kw) -> Response:
+                headers=None, timeout=None, cookies=None, **kw) -> Response:
         kw = self._clean_kw(kw)
         m = method.upper()
         fn = getattr(self._client, m.lower(), None)
         if fn is None:
             raise TransportError(f"primp has no method {m}")
         r = fn(url=url, params=self._stringify(params), json=json, data=data,
-               headers=self._merged(headers), timeout=timeout, **kw)
+               headers=self._merged(headers), cookies=cookies or None,
+               timeout=timeout, **kw)
         return Response(r)
 
     def get(self, url, params=None, **kw):

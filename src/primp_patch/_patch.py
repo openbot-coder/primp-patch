@@ -8,6 +8,7 @@ from .transport import Response, Session, transport_request, _env_proxy
 from ._async_layers import (
     _patch_httpx, _unpatch_httpx, _patch_aiohttp, _unpatch_aiohttp,
 )
+from ._async_layers import set_shared_state as _set_shared_state
 
 __all__ = ["patch", "unpatch", "is_patched"]
 
@@ -19,6 +20,9 @@ _STATE = {
     "httpx": False,
     "aiohttp": False,
 }
+
+# _async_layers must mutate the SAME dict so is_patched()/unpatch() agree
+_set_shared_state(_STATE)
 
 _originals: dict = {}
 
@@ -41,13 +45,52 @@ def _patch_requests(session_cls=None):
         if proxies is None and getattr(self, "proxies", None):
             proxies = self.proxies
         _apply_proxies(proxies)
+        # merge session-level headers with per-request headers (requests semantics)
+        merged = dict(getattr(self, "headers", None) or {})
+        if headers:
+            merged.update(headers)
+        # merge session cookies + per-request cookies (requests semantics)
+        merged_cookies = dict(cookies or {})
+        try:
+            merged_cookies.update(self.cookies.get_dict())  # type: ignore[union-attr]
+        except Exception:
+            jar = getattr(self, "cookies", None)
+            if jar is not None:
+                try:
+                    merged_cookies.update(dict(jar))
+                except Exception:
+                    pass
         resp = transport_request(method, url, params=params, data=data, json=json,
-                                 headers=headers, timeout=timeout)
+                                 headers=merged or None, cookies=merged_cookies or None,
+                                 timeout=timeout)
         return _to_requests_response(resp, requests)
 
     requests.Session.request = request
     _STATE["requests"] = True
     return True
+
+
+def _charset_from_headers(headers) -> str | None:
+    """Extract charset from Content-Type (e.g. 'text/html; charset=gbk')."""
+    if not headers:
+        return None
+    try:
+        ct = None
+        items = headers.items() if hasattr(headers, "items") else []
+        for k, v in items:
+            if str(k).lower() == "content-type":
+                ct = str(v)
+                break
+        if not ct:
+            return None
+        for part in ct.split(";"):
+            part = part.strip()
+            if part.lower().startswith("charset="):
+                cs = part.split("=", 1)[1].strip().strip('"').strip("'")
+                return cs or None
+    except Exception:
+        pass
+    return None
 
 
 def _to_requests_response(resp: Response, requests_mod):
@@ -56,7 +99,9 @@ def _to_requests_response(resp: Response, requests_mod):
     r._content = resp.content
     r.headers = dict(resp.headers) if resp.headers else {}
     r.url = resp.url
-    r.encoding = "utf-8"
+    # respect the response's declared charset; None lets requests fall back
+    # to apparent_encoding (chardet/charset_normalizer) — never hardcode utf-8
+    r.encoding = _charset_from_headers(r.headers)
     # minimal ok/history flags
     try:
         r.reason = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",

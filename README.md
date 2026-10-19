@@ -30,10 +30,12 @@ source changes.
 
 ## Install
 
+> **Note:** the package is **not on PyPI** yet — install from GitHub:
+
 ```bash
-pip install primp-patch
+pip install "git+https://github.com/vex1023/primp-patch.git"
 # with extras
-pip install "primp-patch[all]"
+pip install "primp-patch[all] @ git+https://github.com/vex1023/primp-patch.git"
 ```
 
 ## Usage
@@ -78,7 +80,7 @@ MIT
 v0.2.0 起内置 `pcurl`：primp 内核的 curl 风格命令行，默认 Chrome TLS/JA3 指纹。
 
 ```bash
-pip install primp-patch          # 安装后自带 pcurl 命令
+pip install "git+https://github.com/vex1023/primp-patch.git"  # 安装后自带 pcurl 命令
 python -m primp_patch.curl ...   # 或不经 PATH 直接调用
 
 pcurl https://api.github.com/zen                 # GET，Chrome 指纹
