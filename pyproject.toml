@@ -35,4 +35,4 @@ all = ["requests>=2.20", "urllib3>=1.26"]
 where = ["src"]
 
 [project.urls]
-Homepage = "https://github.com/vex1023/primp-patch"
+Homepage = "https://github.com/openbot-coder/primp-patch"
